@@ -1,0 +1,91 @@
+#!/bin/bash
+
+#Author Asad Siddiqui asad.siddiqui@gmail.com
+echo -en "\n"
+echo "**************************************************************************"
+echo "* Usage: easyaac.sh playlist.m3u bitrate                                 *"
+echo "* Please note that bitrate is specfied in kbps                           *"
+echo "* This script requires lame, aacplusenc and MP4Box                       *"
+echo "* Additionaly eyeD3 and AtomicParsley are required for tagging support   *"
+echo "* Author: Asad Siddiqui asad.siddiqui@live.in                            *"
+echo "**************************************************************************"
+echo -en "\n"
+
+
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 playlist.m3u bitrate" >&2
+  exit 1
+fi
+if ! [ -e "$1" ]; then
+  echo "Error! $1 playlist not found" >&2
+  exit 1
+fi
+
+if ! [ -e "/usr/bin/lame" ]; then
+  echo "Error! lame is not installed. Please install it before using this script" >&2
+  exit 1
+fi
+
+if ! [ -e "/usr/bin/aacplusenc" ]; then
+  echo "Error! aacplusenc is not installed. Please install it before using this script" >&2
+  exit 1
+fi
+
+if ! [ -e "/usr/bin/MP4Box" ]; then
+  echo "Error! MP4Box is not installed. Please install it before using this script" >&2
+  exit 1
+fi
+
+if ! [ -e "/usr/bin/AtomicParsley" ]; then
+  echo "Warning! AtomicParsley is not installed. Tag support will be disabled" >&2
+  notag=true
+fi
+
+if ! [ -e "/usr/bin/eyeD3" ]; then
+  if ! [ $notag ]; then
+     echo "Warning! eyed3 is not installed. Tag support will be disabled" >&2
+     notag=true
+  fi
+fi
+
+ 
+SAVEIFS=$IFS
+BITRATE=$2
+
+IFS=$(echo -en "\n\b")
+echo $1 | grep ".m3u"
+if [ $? -eq 0 ]; then
+    grep "/*.mp3" $1 > list.txt
+else
+    ls $1/*.mp3 > list.txt
+fi
+OUTD=_$(basename $1 .m3u)
+mkdir $OUTD
+if [ $? -ne 0 ]; then
+   echo "Error! Cannot create output directory" >&2
+   exit 1
+fi
+
+for f in `cat list.txt`
+do
+ 	INF=$f
+	TEMPF=$(basename $INF)
+	TEMPF=`echo "$TEMPF" | sed "s/.mp3/.aac/"`
+	/usr/bin/lame --decode "$INF" - | /usr/bin/aacplusenc - "$TEMPF" $BITRATE
+	OUTF=`echo "$TEMPF" | sed "s/.aac/.m4a/"`
+	MP4Box -add "$TEMPF" "$OUTD/$OUTF"
+	if ! [ $notag ]; then
+	   TITLE=`eyeD3 --rfc822  "$INF" | grep '^Title\b' | sed s'/^.*Title: //'`
+	   ALBUM=`eyeD3 --rfc822  "$INF" | grep '^Album\b' | sed s'/^.*Album: //'`
+	   ARTIST=`eyeD3 --rfc822  "$INF" | grep '^Artist\b' | sed s'/^.*Artist: //'`
+	   GENRE=`eyeD3 --rfc822  "$INF" | grep '^Genre\b' | sed s'/^.*Genre: //'`
+	   YEAR=`eyeD3 --rfc822  "$INF" | grep '^Year\b' | sed s'/^.*Year: //'`
+	   AtomicParsley  "$OUTD/$OUTF" --artist "$ARTIST" --title "$TITLE" --album "$ALBUM" --genre "$GENRE" --year "$YEAR" -W
+    fi
+    _OUTF="$ARTIST - $TITLE.m4a"
+    mv "$OUTD/$OUTF" "$OUTD/$_OUTF"
+    rm "$TEMPF"
+done
+rm list.txt
+# restore $IFS
+IFS=$SAVEIFS
